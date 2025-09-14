@@ -1,0 +1,434 @@
+<!-- Save as index.html (single-file front-end) -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>ExamPrep AI — Ask, Generate Papers, Save</title>
+  <!-- Firebase SDK for authentication (client-only) -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+
+  <style>
+    :root{--bg:#0f1724;--card:#0b1220;--muted:#9aa4b2;--accent:#6ee7b7}
+    *{box-sizing:border-box;font-family:Inter,system-ui,Segoe UI,Roboto,'Helvetica Neue',Arial}
+    body{margin:0;background:linear-gradient(180deg,#071022 0%, #0f1724 100%);color:#e6eef6}
+    .container{max-width:1100px;margin:28px auto;padding:20px}
+    header{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+    .brand{display:flex;align-items:center;gap:12px}
+    .logo{width:44px;height:44px;border-radius:10px;background:linear-gradient(135deg,var(--accent),#60a5fa);display:flex;align-items:center;justify-content:center;font-weight:700;color:#04202c}
+    h1{font-size:20px;margin:0}
+    .card{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); padding:18px;border-radius:12px;box-shadow:0 6px 24px rgba(2,6,23,0.6)}
+    .grid{display:grid;grid-template-columns:1fr 360px;gap:16px}
+    .controls{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap}
+    input,textarea,select,button{font-size:15px;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:inherit;width:100%}
+    textarea{min-height:120px;resize:vertical}
+    .small{font-size:13px;color:var(--muted)}
+    .btn{background:linear-gradient(90deg,#10b981,#06b6d4);color:#021;cursor:pointer;border:none;padding:10px 12px}
+    .secondary{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--muted)}
+    .login-area{display:flex;gap:8px;align-items:center}
+    .list{margin-top:12px;display:flex;flex-direction:column;gap:8px}
+    .item{padding:10px;border-radius:8px;background:rgba(255,255,255,0.01);display:flex;justify-content:space-between;align-items:center}
+    .muted{color:var(--muted)}
+    footer{margin-top:18px;color:var(--muted);font-size:13px}
+    .tag{padding:6px 8px;border-radius:8px;background:rgba(255,255,255,0.02);font-size:13px}
+    @media(max-width:900px){.grid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="brand">
+        <div class="logo">EP</div>
+        <div>
+          <h1>ExamPrep AI</h1>
+          <div class="small">Ask any subject question • Generate example papers • Secure-backed AI</div>
+        </div>
+      </div>
+
+      <div class="login-area card" id="authCard" style="padding:8px 12px;">
+        <span class="small" id="userLabel">Not signed in</span>
+        <div style="width:12px"></div>
+        <button class="btn small" id="btnSignIn">Sign in</button>
+      </div>
+    </header>
+
+    <main class="grid">
+      <section>
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div>
+              <h3 style="margin:0 0 6px 0">Ask AI a question</h3>
+              <div class="small muted">Choose a provider and ask any course question.</div>
+            </div>
+            <div class="tag" id="statusTag">Idle</div>
+          </div>
+
+          <div style="margin-top:12px" class="controls">
+            <select id="providerSelect" style="width:200px">
+              <option value="chatgpt">ChatGPT (OpenAI)</option>
+              <option value="deepseek">DeepSeek</option>
+              <option value="gemini">Gemini (Google)</option>
+            </select>
+
+            <select id="subjectSelect" style="width:160px">
+              <option value="math">Mathematics</option>
+              <option value="physics">Physics</option>
+              <option value="chemistry">Chemistry</option>
+              <option value="history">History</option>
+              <option value="english">English</option>
+            </select>
+
+            <button class="secondary" id="btnExample">Insert example</button>
+          </div>
+
+          <textarea id="questionInput" placeholder="Type your question here, e.g. 'Explain Maxwell's equations and give 3 example problems'"></textarea>
+
+          <div style="display:flex;gap:8px;margin-top:10px">
+            <button class="btn" id="askBtn">Ask AI</button>
+            <button class="secondary" id="paperBtn">Generate Example Paper</button>
+            <button class="secondary" id="clearBtn">Clear</button>
+            <div style="flex:1"></div>
+            <div class="small muted">Background AI tasks: <span id="bgCount">0</span></div>
+          </div>
+
+          <div id="answerArea" style="margin-top:12px"></div>
+        </div>
+
+        <div class="card" style="margin-top:12px">
+          <h3 style="margin-top:0">Conversation / Saved Papers</h3>
+          <div class="small muted">Local history of generated papers & answers (saved in your browser)</div>
+          <div class="list" id="historyList"></div>
+        </div>
+
+      </section>
+
+      <aside>
+        <div class="card">
+          <h3 style="margin-top:0">Quick actions</h3>
+          <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
+            <button id="openNotes" class="secondary">My Notes</button>
+            <button id="exportBtn" class="secondary">Export history (.json)</button>
+            <button id="clearHistory" class="secondary">Clear history</button>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:12px">
+          <h4 style="margin:0 0 8px 0">How it works</h4>
+          <div class="small muted">
+            This front-end calls your server endpoints:
+            <ul>
+              <li><code>POST /api/ask</code> — ask a question (body: {provider, subject, prompt, userId})</li>
+              <li><code>POST /api/generate_paper</code> — generate sample question paper</li>
+              <li><code>GET /api/tasks</code> — poll background tasks (optional)</li>
+            </ul>
+            Server proxies the request to ChatGPT/DeepSeek/Gemini using secure API keys. Do not store keys here.
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:12px">
+          <h4 style="margin:0 0 8px 0">Notes</h4>
+          <div class="small muted">
+            • Use a backend proxy (Node/Express, Flask, etc.) to keep API keys secret. :contentReference[oaicite:4]{index=4}
+            <br>• Gemini docs: server-side integration recommended. :contentReference[oaicite:5]{index=5}
+            <br>• DeepSeek supports an OpenAI-compatible API. :contentReference[oaicite:6]{index=6}
+          </div>
+        </div>
+      </aside>
+    </main>
+
+    <footer>
+      <div class="small muted">ExamPrep AI — client UI. Backend required to proxy calls to OpenAI/Gemini/DeepSeek. See comments in this file for example server snippets.</div>
+    </footer>
+  </div>
+
+<script>
+/* ---------------------------
+  FIREBASE AUTH (client-side)
+  - Replace firebaseConfig with your own firebase project config.
+  - On sign-in, we show user info. Authentication is used only for user context.
+---------------------------*/
+const firebaseConfig = {
+  apiKey: "FIREBASE_API_KEY",
+  authDomain: "PROJECT.firebaseapp.com",
+  projectId: "PROJECT_ID",
+  // ... replace with your Firebase config
+};
+
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+
+const btnSignIn = document.getElementById('btnSignIn');
+const userLabel = document.getElementById('userLabel');
+const statusTag = document.getElementById('statusTag');
+
+btnSignIn.addEventListener('click', async ()=>{
+  if (auth.currentUser) {
+    await auth.signOut();
+  } else {
+    // show simple provider chooser
+    const provider = new firebase.auth.GoogleAuthProvider();
+    try {
+      await auth.signInWithPopup(provider);
+    } catch(e){
+      alert('Signin failed: ' + e.message);
+    }
+  }
+});
+
+auth.onAuthStateChanged(user=>{
+  if (user) {
+    userLabel.textContent = user.displayName || user.phoneNumber || user.email;
+    btnSignIn.textContent = 'Sign out';
+  } else {
+    userLabel.textContent = 'Not signed in';
+    btnSignIn.textContent = 'Sign in';
+  }
+});
+
+/* ---------------------------
+  Front-end logic
+---------------------------*/
+const questionInput = document.getElementById('questionInput');
+const askBtn = document.getElementById('askBtn');
+const paperBtn = document.getElementById('paperBtn');
+const providerSelect = document.getElementById('providerSelect');
+const answerArea = document.getElementById('answerArea');
+const historyList = document.getElementById('historyList');
+const bgCount = document.getElementById('bgCount');
+const btnExample = document.getElementById('btnExample');
+const clearBtn = document.getElementById('clearBtn');
+const exportBtn = document.getElementById('exportBtn');
+const clearHistory = document.getElementById('clearHistory');
+
+let backgroundTasks = [];
+let history = JSON.parse(localStorage.getItem('examprep_history')||'[]');
+
+function renderHistory(){
+  historyList.innerHTML = '';
+  history.slice().reverse().forEach((h, idx)=>{
+    const div = document.createElement('div');
+    div.className = 'item';
+    div.innerHTML = `<div style="flex:1">
+      <div style="font-weight:600">${h.title || ('Paper ' + (history.length-idx))}</div>
+      <div class="small muted">${h.summary || ''}</div>
+    </div>
+    <div style="display:flex;gap:6px">
+      <button class="secondary small" data-i="${history.length-1-idx}" onclick="viewEntry(event)">View</button>
+      <button class="secondary small" data-i="${history.length-1-idx}" onclick="deleteEntry(event)">Delete</button>
+    </div>`;
+    historyList.appendChild(div);
+  });
+}
+function viewEntry(e){
+  const i = +e.currentTarget.dataset.i;
+  const item = history[i];
+  if (!item) return;
+  answerArea.innerHTML = `<div class="small muted">Saved: ${new Date(item.created).toLocaleString()}</div>
+    <pre style="white-space:pre-wrap;margin-top:8px">${escapeHtml(item.content)}</pre>`;
+}
+function deleteEntry(e){
+  const i = +e.currentTarget.dataset.i;
+  history.splice(i,1);
+  saveHistory();
+  renderHistory();
+}
+function saveHistory(){
+  localStorage.setItem('examprep_history', JSON.stringify(history));
+}
+function escapeHtml(s){ return (s+'').replace(/[&<>"]/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c])); }
+
+btnExample.addEventListener('click', ()=>{
+  questionInput.value = "Explain 3 common errors students make when solving integrals, give step-by-step solutions and 3 practice problems with answers.";
+});
+
+clearBtn.addEventListener('click', ()=>{
+  questionInput.value='';
+  answerArea.innerHTML='';
+});
+
+askBtn.addEventListener('click', async ()=>{
+  const prompt = questionInput.value.trim();
+  if (!prompt) { alert('Write a question first'); return; }
+  statusTag.textContent = 'Sending';
+  const provider = providerSelect.value;
+  const userId = (firebase.auth().currentUser && firebase.auth().currentUser.uid) || 'anon';
+  try {
+    // send to backend proxy
+    const resp = await fetch('/api/ask', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({provider, prompt, subject: document.getElementById('subjectSelect').value, userId})
+    });
+    if (!resp.ok) throw new Error('Server error: ' + resp.status);
+    statusTag.textContent = 'Waiting';
+    const json = await resp.json();
+    statusTag.textContent = 'Received';
+    const text = json.resultText || json.text || JSON.stringify(json);
+    answerArea.innerHTML = `<pre style="white-space:pre-wrap">${escapeHtml(text)}</pre>`;
+    history.push({title:`Q: ${prompt.slice(0,80)}`, summary:`Provider: ${provider}`, content:text, created:Date.now()});
+    saveHistory();
+    renderHistory();
+  } catch (err){
+    statusTag.textContent = 'Error';
+    answerArea.innerHTML = `<div class="small muted">Error: ${escapeHtml(err.message)}</div>`;
+  } finally {
+    setTimeout(()=>statusTag.textContent='Idle', 800);
+  }
+});
+
+paperBtn.addEventListener('click', async ()=>{
+  const subject = document.getElementById('subjectSelect').value;
+  const provider = providerSelect.value;
+  const userId = (firebase.auth().currentUser && firebase.auth().currentUser.uid) || 'anon';
+  const body = {provider, subject, userId, options:{numQuestions:10, difficulty:'medium'}};
+  statusTag.textContent = 'Generating paper';
+  try {
+    const resp = await fetch('/api/generate_paper', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(body)
+    });
+    if (!resp.ok) throw new Error('Server returned ' + resp.status);
+    const json = await resp.json();
+    const paper = json.paperText || JSON.stringify(json);
+    answerArea.innerHTML = `<pre style="white-space:pre-wrap">${escapeHtml(paper)}</pre>`;
+    history.push({title:`Paper: ${subject}`, summary:`Provider:${provider}`, content:paper, created:Date.now()});
+    saveHistory();
+    renderHistory();
+  } catch(e){
+    answerArea.innerHTML = `<div class="small muted">Error: ${escapeHtml(e.message)}</div>`;
+  } finally {
+    statusTag.textContent='Idle';
+  }
+});
+
+exportBtn.addEventListener('click', ()=>{
+  const data = JSON.stringify(history, null, 2);
+  const blob = new Blob([data], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'examprep_history.json'; a.click();
+  URL.revokeObjectURL(url);
+});
+
+clearHistory.addEventListener('click', ()=>{
+  if (!confirm('Clear local history?')) return;
+  history = [];
+  saveHistory();
+  renderHistory();
+});
+
+/* Background tasks poller (optional) — polls server for any background jobs */
+async function pollTasks(){
+  try {
+    const resp = await fetch('/api/tasks?userId=' + encodeURIComponent((auth.currentUser && auth.currentUser.uid) || 'anon'));
+    if (resp.ok){
+      const json = await resp.json();
+      backgroundTasks = json.tasks || [];
+      bgCount.textContent = backgroundTasks.length;
+    }
+  } catch(e){ /* ignore network errors */ }
+}
+setInterval(pollTasks, 5000);
+pollTasks();
+
+/* Init render */
+renderHistory();
+
+/* ---------------------------
+  End of client JS
+---------------------------*/
+
+/*
+------------------------------
+  EXAMPLE SERVER SNIPPET (Node / Express)
+------------------------------
+Save this separately on a secure server. DO NOT put keys in browser code.
+
+const express = require('express');
+const fetch = require('node-fetch'); // or use axios
+const app = express();
+app.use(express.json());
+
+// Put your real API keys in environment variables (recommended)
+const OPENAI_KEY = process.env.OPENAI_KEY;   // ChatGPT / OpenAI key
+const DEEPSEEK_KEY = process.env.DEEPSEEK_KEY;
+const GEMINI_KEY = process.env.GEMINI_KEY;
+
+app.post('/api/ask', async (req, res) => {
+  const { provider, prompt } = req.body;
+  try {
+    if (provider === 'chatgpt') {
+      // Example OpenAI call (modern OpenAI -> use official SDK or REST)
+      const r = await fetch('https://api.openai.com/v1/chat/completions', {
+        method:'POST',
+        headers:{
+          'Authorization': `Bearer ${OPENAI_KEY}`,
+          'Content-Type':'application/json'
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini', // choose your model
+          messages: [{role:'user', content: prompt}]
+        })
+      });
+      const j = await r.json();
+      return res.json({ resultText: j.choices?.[0]?.message?.content || j });
+    } else if (provider === 'deepseek') {
+      const r = await fetch('https://api.deepseek.com/v1/chat/completions', {
+        method:'POST',
+        headers:{
+          'Authorization': `Bearer ${DEEPSEEK_KEY}`,
+          'Content-Type':'application/json'
+        },
+        body: JSON.stringify({
+          model: 'deepseek-v3.1',
+          messages: [{role:'user', content: prompt}]
+        })
+      });
+      const j = await r.json();
+      return res.json({ resultText: j.choices?.[0]?.message?.content || j });
+    } else if (provider === 'gemini') {
+      // For Google Gemini, use Vertex AI client or REST calls; example assumes REST via Google Cloud auth
+      const r = await fetch('https://api.google.com/v1/gemini:generate', {
+        method:'POST',
+        headers:{
+          'Authorization': `Bearer ${GEMINI_KEY}`,
+          'Content-Type':'application/json'
+        },
+        body: JSON.stringify({ prompt })
+      });
+      const j = await r.json();
+      return res.json({ resultText: j.output?.[0]?.content || j });
+    } else {
+      return res.status(400).json({error:'unknown provider'});
+    }
+  } catch(err){
+    console.error(err);
+    return res.status(500).json({error: String(err)});
+  }
+});
+
+app.post('/api/generate_paper', async (req, res)=>{
+  // Similar proxy that asks the model to return a formatted question paper (JSON or plaintext)
+});
+
+app.get('/api/tasks', async (req, res)=>{
+  // Return any queued background tasks for the user
+  res.json({ tasks: [] });
+});
+
+app.listen(3000, ()=>console.log('Server started'));
+*/
+
+/*
+SECURITY REMINDERS:
+- NEVER hardcode the API keys in client-side JS or in any repo that can be accessed by users.
+- Use environment variables and server-side storage.
+- Rotate keys if they are ever exposed.
+- For production, enforce rate limits, authentication and monitoring.
+References: OpenAI best practices; community threads on not storing keys in frontend; Gemini docs; DeepSeek docs. 
+*/
+</script>
+</body>
+</html>
